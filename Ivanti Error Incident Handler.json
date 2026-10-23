@@ -1,0 +1,664 @@
+{
+  "name": "Ivanti Error Incident Handler",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Ivanti Error Incident Handler\n\n### How it works\n\n1. Triggers when a workflow error occurs, then waits briefly to avoid immediate reprocessing.\n2. Searches Ivanti Neurons for ITSM for an incident related to the error context.\n3. If no related incident exists, creates a new incident.\n4. If an incident exists, checks whether it is resolved.\n5. If resolved, reactivates the incident and then appends a note; otherwise, just appends a note.\n\n### Setup steps\n\n- - [ ] Configure the Error Trigger node (or ensure this workflow is set as the error workflow) so it receives error events from your main workflows.\n- - [ ] Set the Wait node duration appropriate for your incident system’s rate limits and eventual consistency needs.\n- - [ ] Add Ivanti Neurons for ITSM credentials (base URL/tenant + auth) and select them in all Ivanti nodes (Find Related Incident, Create New Incident, Set Status Active, Insert Note).\n- - [ ] Configure the Ivanti queries/fields: define how “related incident” is identified, which fields are set on create, what status value maps to “Active”, and the note content format.\n- - [ ] Review both IF nodes’ conditions to match your Ivanti response structure (no results vs results, and resolved vs not resolved).\n\n### Customization\n\nYou can change the correlation logic in “Find Related Incident” (e.g., by workflow name, error message hash, or service/component), and adjust the “Insert Note” content to include stack traces, execution IDs, and links back to n8n.",
+        "height": 832,
+        "width": 480
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -128,
+        96
+      ],
+      "id": "03619783-cd01-4e86-9f91-7d86b84ecd56",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "## Error trigger and delay\n\nCatches workflow errors and pauses before continuing, helping prevent rapid repeat incident updates/creates.",
+        "height": 320,
+        "width": 400,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        400,
+        96
+      ],
+      "id": "39d13b15-da1b-40cd-9fc6-158a1984ec5e",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "## Incident lookup and branching\n\nSearches for an existing related Ivanti incident and routes execution based on whether one exists and whether it is resolved.",
+        "height": 832,
+        "width": 704,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        848,
+        96
+      ],
+      "id": "dc30ed72-f746-414a-a0e0-831595241acf",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "content": "## Create new incident\n\nCreates a new Ivanti incident when no related incident is found.",
+        "height": 320,
+        "width": 272,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1616,
+        96
+      ],
+      "id": "57525e42-f5aa-4e8c-83ca-f92e577159b1",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "content": "## Reactivate and add note\n\nIf the incident is resolved it is set back to Active, and in all cases a note is appended to capture the latest error details.",
+        "height": 496,
+        "width": 784,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1616,
+        432
+      ],
+      "id": "f6916bcf-5338-4788-82ce-b4a62a1d7206",
+      "name": "Sticky Note4"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        448,
+        272
+      ],
+      "id": "a9f541f3-95c6-4bce-b759-a7ca82e94273",
+      "name": "When Workflow Error Occurs"
+    },
+    {
+      "parameters": {
+        "object": "Incidents",
+        "returnAll": true,
+        "odataFilter": {
+          "odataFilter": [
+            {
+              "fieldName": "Status",
+              "operation": "ne",
+              "value": "Closed"
+            },
+            {
+              "fieldName": "XSC_N8N_WF_ID",
+              "value": "={{ $json.workflow.id }}"
+            }
+          ]
+        },
+        "requestOptions": {}
+      },
+      "type": "@synergyconsulting/n8n-nodes-ivanti-neurons-for-itsm.ivantiNeuronsForItsm",
+      "typeVersion": 1.1,
+      "position": [
+        896,
+        272
+      ],
+      "id": "76c4da92-8ada-4fea-a60e-90d3f60a6acc",
+      "name": "Find Related Ivanti Incident",
+      "alwaysOutputData": true,
+      "credentials": {
+        "ivantiNeuronsForItsmApiKeyApi": {
+          "id": "BD27ImxutzJtXq8E",
+          "name": "stg-heat20254"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "object": "Journal__Notess",
+        "fields": {
+          "fields": [
+            {
+              "name": "NotesBody",
+              "value": "=<p><b>N8N workflow execution failed.</b></p>\n<p>\n<b>Workflow:</b> {{ $('When Workflow Error Occurs').item.json.workflow.name }}<br>\n<b>Workflow ID:</b> {{ $('When Workflow Error Occurs').item.json.workflow.id }}<br>\n<b>Execution ID:</b> {{ $('When Workflow Error Occurs').item.json.execution?.id ?? '-' }}<br>\n<b>Links:</b> <a href=\"{{ $('When Workflow Error Occurs').item.json.execution?.url ?? '' }}\" target=\"_blank\">Open execution</a> | <a href=\"{{ ($('When Workflow Error Occurs').item.json.execution?.url ?? '').split('/executions')[0] }}\" target=\"_blank\">Open workflow</a><br>\n<b>Trigger:</b> {{ $('When Workflow Error Occurs').item.json.execution?.executionContext?.triggerNode?.name ?? '-' }} ({{ $('When Workflow Error Occurs').item.json.execution?.mode ?? $('When Workflow Error Occurs').item.json.trigger?.mode ?? '-' }})<br>\n<b>Time:</b> {{ DateTime.fromMillis($('When Workflow Error Occurs').item.json.execution?.error?.timestamp ?? Date.now()).setZone('Europe/Vilnius').toFormat('yyyy-MM-dd HH:mm:ss') }}\n</p>\n<p>\n<b>Failed node:</b> {{ $('When Workflow Error Occurs').item.json.execution?.lastNodeExecuted ?? $('When Workflow Error Occurs').item.json.execution?.error?.node?.name ?? '-' }}<br>\n<b>Node type:</b> {{ $('When Workflow Error Occurs').item.json.execution?.error?.node?.type ?? '-' }}<br>\n<b>Action:</b> {{ [$('When Workflow Error Occurs').item.json.execution?.error?.node?.parameters?.resource, $('When Workflow Error Occurs').item.json.execution?.error?.node?.parameters?.operation].filter(Boolean).join(' / ') || '-' }}\n</p>\n<p>\n<b>Error:</b> {{ $('When Workflow Error Occurs').item.json.execution?.error?.message ?? $('When Workflow Error Occurs').item.json.trigger?.error?.message ?? '-' }}<br>\n<b>Details:</b> {{ $('When Workflow Error Occurs').item.json.execution?.error?.description ?? '-' }}<br>\n<b>API response:</b> {{ $('When Workflow Error Occurs').item.json.execution?.error?.context?.data?.data ? (j => [j.code, j.description, [].concat(j.message ?? []).join('; ')].filter(Boolean).join(' – '))(JSON.parse(String.fromCharCode(...$('When Workflow Error Occurs').item.json.execution.error.context.data.data))) : '-' }}\n</p>"
+            },
+            {
+              "name": "ParentLink_RecID",
+              "value": "={{ $json.RecId }}"
+            },
+            {
+              "name": "Subject",
+              "value": "N8N workflow execution failed"
+            }
+          ]
+        },
+        "requestOptions": {}
+      },
+      "type": "@synergyconsulting/n8n-nodes-ivanti-neurons-for-itsm.ivantiNeuronsForItsm",
+      "typeVersion": 1.1,
+      "position": [
+        2224,
+        704
+      ],
+      "id": "961b08a8-4c31-453c-82ce-bbb8672013eb",
+      "name": "Add Note to Ivanti Incident",
+      "credentials": {
+        "ivantiNeuronsForItsmApiKeyApi": {
+          "id": "BD27ImxutzJtXq8E",
+          "name": "stg-heat20254"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 30
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        640,
+        272
+      ],
+      "id": "2ebcdaee-4870-4e04-8878-48406ee65a6d",
+      "name": "Wait 30 Seconds",
+      "webhookId": "af8ac8fe-500b-4cce-b43d-efe111f25330"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "object": "Incidents",
+        "recordId": "={{ $json.RecId }}",
+        "fields": {
+          "fields": [
+            {
+              "name": "Status",
+              "value": "Active"
+            }
+          ]
+        },
+        "requestOptions": {}
+      },
+      "type": "@synergyconsulting/n8n-nodes-ivanti-neurons-for-itsm.ivantiNeuronsForItsm",
+      "typeVersion": 1.1,
+      "position": [
+        1792,
+        576
+      ],
+      "id": "40cb3fc4-4b87-4e80-ada1-859b86f8a1ef",
+      "name": "Set Incident Status to Active",
+      "credentials": {
+        "ivantiNeuronsForItsmApiKeyApi": {
+          "id": "BD27ImxutzJtXq8E",
+          "name": "stg-heat20254"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "object": "Incidents",
+        "fields": {
+          "fields": [
+            {
+              "name": "Status",
+              "value": "Logged"
+            },
+            {
+              "name": "Subject",
+              "value": "=[N8N]{{ $('When Workflow Error Occurs').item.json.workflow.name }} Workflow failed "
+            },
+            {
+              "name": "Symptom",
+              "value": "=<p><b>N8N workflow execution failed.</b></p>\n<p>\n<b>Workflow:</b> {{ $('When Workflow Error Occurs').item.json.workflow.name }}<br>\n<b>Workflow ID:</b> {{ $('When Workflow Error Occurs').item.json.workflow.id }}<br>\n<b>Execution ID:</b> {{ $('When Workflow Error Occurs').item.json.execution?.id ?? '-' }}<br>\n<b>Links:</b> <a href=\"{{ $('When Workflow Error Occurs').item.json.execution?.url ?? '' }}\" target=\"_blank\">Open execution</a> | <a href=\"{{ ($('When Workflow Error Occurs').item.json.execution?.url ?? '').split('/executions')[0] }}\" target=\"_blank\">Open workflow</a><br>\n<b>Trigger:</b> {{ $('When Workflow Error Occurs').item.json.execution?.executionContext?.triggerNode?.name ?? '-' }} ({{ $('When Workflow Error Occurs').item.json.execution?.mode ?? $('When Workflow Error Occurs').item.json.trigger?.mode ?? '-' }})<br>\n<b>Time:</b> {{ DateTime.fromMillis($('When Workflow Error Occurs').item.json.execution?.error?.timestamp ?? Date.now()).setZone('Europe/Vilnius').toFormat('yyyy-MM-dd HH:mm:ss') }}\n</p>\n<p>\n<b>Failed node:</b> {{ $('When Workflow Error Occurs').item.json.execution?.lastNodeExecuted ?? $('When Workflow Error Occurs').item.json.execution?.error?.node?.name ?? '-' }}<br>\n<b>Node type:</b> {{ $('When Workflow Error Occurs').item.json.execution?.error?.node?.type ?? '-' }}<br>\n<b>Action:</b> {{ [$('When Workflow Error Occurs').item.json.execution?.error?.node?.parameters?.resource, $('When Workflow Error Occurs').item.json.execution?.error?.node?.parameters?.operation].filter(Boolean).join(' / ') || '-' }}\n</p>\n<p>\n<b>Error:</b> {{ $('When Workflow Error Occurs').item.json.execution?.error?.message ?? $('When Workflow Error Occurs').item.json.trigger?.error?.message ?? '-' }}<br>\n<b>Details:</b> {{ $('When Workflow Error Occurs').item.json.execution?.error?.description ?? '-' }}<br>\n<b>API response:</b> {{ $('When Workflow Error Occurs').item.json.execution?.error?.context?.data?.data ? (j => [j.code, j.description, [].concat(j.message ?? []).join('; ')].filter(Boolean).join(' – '))(JSON.parse(String.fromCharCode(...$('When Workflow Error Occurs').item.json.execution.error.context.data.data))) : '-' }}\n</p>"
+            },
+            {
+              "name": "ProfileLink",
+              "value": "3734B48625D043B0939456EBF5B07F43"
+            },
+            {
+              "name": "XSC_N8N_WF_ID",
+              "value": "={{ $('When Workflow Error Occurs').item.json.workflow.id }}"
+            }
+          ]
+        },
+        "requestOptions": {}
+      },
+      "type": "@synergyconsulting/n8n-nodes-ivanti-neurons-for-itsm.ivantiNeuronsForItsm",
+      "typeVersion": 1.1,
+      "position": [
+        1696,
+        256
+      ],
+      "id": "d9455ac4-7e39-4039-8a04-c83a53fb7844",
+      "name": "Create Ivanti Incident",
+      "credentials": {
+        "ivantiNeuronsForItsmApiKeyApi": {
+          "id": "BD27ImxutzJtXq8E",
+          "name": "stg-heat20254"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "22d46d35-571f-4cfb-8cf5-c84a163ea2e1",
+              "leftValue": "={{ $json.RecId }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "empty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1136,
+        272
+      ],
+      "id": "da1a4495-a953-4eac-931f-e170c6b09f0d",
+      "name": "If Incident RecId Is Empty"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "d6bc07d0-8b17-404f-ba37-6fcb21c5b04d",
+              "leftValue": "={{ $json.Status }}",
+              "rightValue": "Resolved",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1408,
+        688
+      ],
+      "id": "01ca80fd-7beb-494b-b5d8-d09a38cea5f8",
+      "name": "If Incident Status Is Resolved"
+    }
+  ],
+  "pinData": {
+    "When Workflow Error Occurs": [
+      {
+        "json": {
+          "execution": {
+            "id": "10712",
+            "url": "https://n8n-demo.itsmcloud.lt/workflow/HR7PoPpwozwDtyG5/executions/10712",
+            "error": {
+              "level": "warning",
+              "tags": {
+                "reWrapped": true
+              },
+              "description": "Request failed with status code 400",
+              "timestamp": 1792749669812,
+              "context": {
+                "data": {
+                  "type": "Buffer",
+                  "data": [
+                    123,
+                    13,
+                    10,
+                    32,
+                    32,
+                    34,
+                    99,
+                    111,
+                    100,
+                    101,
+                    34,
+                    58,
+                    32,
+                    34,
+                    73,
+                    83,
+                    77,
+                    95,
+                    52,
+                    48,
+                    48,
+                    48,
+                    34,
+                    44,
+                    13,
+                    10,
+                    32,
+                    32,
+                    34,
+                    100,
+                    101,
+                    115,
+                    99,
+                    114,
+                    105,
+                    112,
+                    116,
+                    105,
+                    111,
+                    110,
+                    34,
+                    58,
+                    32,
+                    34,
+                    73,
+                    110,
+                    118,
+                    97,
+                    108,
+                    105,
+                    100,
+                    32,
+                    82,
+                    101,
+                    113,
+                    117,
+                    101,
+                    115,
+                    116,
+                    32,
+                    80,
+                    97,
+                    121,
+                    108,
+                    111,
+                    97,
+                    100,
+                    34,
+                    44,
+                    13,
+                    10,
+                    32,
+                    32,
+                    34,
+                    109,
+                    101,
+                    115,
+                    115,
+                    97,
+                    103,
+                    101,
+                    34,
+                    58,
+                    32,
+                    91,
+                    13,
+                    10,
+                    32,
+                    32,
+                    32,
+                    32,
+                    34,
+                    65,
+                    116,
+                    116,
+                    97,
+                    99,
+                    104,
+                    109,
+                    101,
+                    110,
+                    116,
+                    32,
+                    119,
+                    105,
+                    116,
+                    104,
+                    32,
+                    54,
+                    70,
+                    56,
+                    48,
+                    69,
+                    67,
+                    48,
+                    50,
+                    70,
+                    50,
+                    55,
+                    69,
+                    52,
+                    67,
+                    67,
+                    52,
+                    57,
+                    53,
+                    51,
+                    49,
+                    68,
+                    49,
+                    56,
+                    55,
+                    55,
+                    68,
+                    69,
+                    53,
+                    68,
+                    66,
+                    53,
+                    66,
+                    32,
+                    110,
+                    111,
+                    116,
+                    32,
+                    102,
+                    111,
+                    117,
+                    110,
+                    100,
+                    34,
+                    13,
+                    10,
+                    32,
+                    32,
+                    93,
+                    44,
+                    13,
+                    10,
+                    32,
+                    32,
+                    34,
+                    104,
+                    101,
+                    108,
+                    112,
+                    34,
+                    58,
+                    32,
+                    34,
+                    34,
+                    13,
+                    10,
+                    125
+                  ]
+                }
+              },
+              "functionality": "regular",
+              "name": "NodeOperationError",
+              "node": {
+                "parameters": {
+                  "resource": "attachment",
+                  "operation": "read",
+                  "attachmentId": "={{ $json.EntityLink }}",
+                  "requestOptions": {}
+                },
+                "type": "@synergyconsulting/n8n-nodes-ivanti-neurons-for-itsm.ivantiNeuronsForItsm",
+                "typeVersion": 1,
+                "position": [
+                  -16,
+                  -48
+                ],
+                "id": "a3847c4f-f456-4fb3-b8c0-d06b01c297d1",
+                "name": "Read an attachment1",
+                "alwaysOutputData": false,
+                "credentials": {
+                  "ivantiNeuronsForItsmApiKeyApi": {
+                    "id": "jcftHoP7p7q462i4",
+                    "name": "stg-heat20261"
+                  }
+                }
+              },
+              "messages": [
+                "Request failed with status code 400"
+              ],
+              "message": "Bad request - please check your parameters",
+              "stack": "NodeOperationError: Bad request - please check your parameters\n    at ExecuteContext.router (/home/node/.n8n/nodes/node_modules/@synergyconsulting/n8n-nodes-ivanti-neurons-for-itsm/nodes/IvantiNeuronsForITSM/actions/router.ts:72:9)\n    at processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at WorkflowExecute.executeNode (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-core@file+packages+core_@opentelemetry+api@1.9.0_@opentelemetry+exporter-trace-otlp_4dbefa9881a7c57a9e05a20ce4387c10/node_modules/n8n-core/src/execution-engine/workflow-execute.ts:1039:8)\n    at WorkflowExecute.runNode (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-core@file+packages+core_@opentelemetry+api@1.9.0_@opentelemetry+exporter-trace-otlp_4dbefa9881a7c57a9e05a20ce4387c10/node_modules/n8n-core/src/execution-engine/workflow-execute.ts:1218:11)\n    at /usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-core@file+packages+core_@opentelemetry+api@1.9.0_@opentelemetry+exporter-trace-otlp_4dbefa9881a7c57a9e05a20ce4387c10/node_modules/n8n-core/src/execution-engine/workflow-execute.ts:1655:27\n    at /usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-core@file+packages+core_@opentelemetry+api@1.9.0_@opentelemetry+exporter-trace-otlp_4dbefa9881a7c57a9e05a20ce4387c10/node_modules/n8n-core/src/execution-engine/workflow-execute.ts:2298:11"
+            },
+            "lastNodeExecuted": "Read an attachment1",
+            "mode": "webhook",
+            "executionContext": {
+              "version": 1,
+              "establishedAt": 1792749669484,
+              "source": "webhook",
+              "triggerNode": {
+                "name": "Ivanti Neurons for ITSM Connector Trigger",
+                "type": "@synergyconsulting/n8n-nodes-ivanti-neurons-for-itsm.ivantiNeuronsForItsmConnectorTrigger"
+              }
+            }
+          },
+          "workflow": {
+            "id": "HR7PoPpwozwDtyG5",
+            "name": "IncGetAttachError"
+          }
+        }
+      }
+    ]
+  },
+  "connections": {
+    "When Workflow Error Occurs": {
+      "main": [
+        [
+          {
+            "node": "Wait 30 Seconds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Related Ivanti Incident": {
+      "main": [
+        [
+          {
+            "node": "If Incident RecId Is Empty",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 30 Seconds": {
+      "main": [
+        [
+          {
+            "node": "Find Related Ivanti Incident",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Incident Status to Active": {
+      "main": [
+        [
+          {
+            "node": "Add Note to Ivanti Incident",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Incident RecId Is Empty": {
+      "main": [
+        [
+          {
+            "node": "Create Ivanti Incident",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If Incident Status Is Resolved",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Incident Status Is Resolved": {
+      "main": [
+        [
+          {
+            "node": "Set Incident Status to Active",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Add Note to Ivanti Incident",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "7ef7dcf1-8e27-46d3-af25-3c7c1750d907",
+  "meta": {
+    "instanceId": "28140a2a558fc5b776b151ce0071f380485a0d76c3c12030f9c0d298ee7a6110"
+  },
+  "id": "iRlbedExm1vZc2x0",
+  "tags": []
+}
